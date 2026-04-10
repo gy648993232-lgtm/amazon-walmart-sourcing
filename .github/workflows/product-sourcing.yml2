@@ -1,0 +1,56 @@
+name: 🛒 Amazon → Walmart 选品自动化
+
+on:
+  schedule:
+    - cron: "0 1 * * *"
+  workflow_dispatch:
+    inputs:
+      keywords:
+        description: "关键词（逗号分隔）"
+        required: false
+        default: ""
+      max_products:
+        description: "每关键词最大商品数"
+        required: false
+        default: "20"
+        type: number
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  sourcing:
+    name: 🕷️ 数据采集与选品分析
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 检出代码
+        uses: actions/checkout@v4
+
+      - name: 🐍 设置 Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: 📦 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: 🕷️ 采集数据并分析
+        run: |
+          mkdir -p data reports
+          python run_pipeline.py \
+            --keywords "${{ inputs.keywords || 'kitchen tools,home organization,office supplies,fitness accessories' }}" \
+            --output-dir reports \
+            --data-dir data
+
+      - name: 📊 上传报告
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: sourcing-reports-${{ github.run_number }}
+          path: |
+            reports/
+            data/
+          retention-days: 30
