@@ -1,0 +1,38 @@
+# ============================================
+# Amazon → Walmart 选品工作流配置
+# ============================================
+
+# 选品关键词（可在 GitHub Secrets 中覆盖）
+keywords:
+  - "kitchen tools"
+  - "home organization"
+  - "office supplies"
+  - "fitness accessories"
+
+# 采集数量（每关键词）
+max_products_per_keyword: 20
+
+# 选品过滤条件
+filter:
+  min_amazon_reviews: 50
+  max_amazon_reviews: 3000
+  min_amazon_rating: 3.5
+  max_amazon_rating: 4.5
+  min_price_gap: 3.0        # 沃尔玛比亚马逊至少贵 $3
+  min_profit_margin: 0.20  # 最低利润率 20%
+  max_weight_lbs: 3.0      # 最大重量（控制FBA成本）
+
+# 输出设置
+output:
+  csv_enabled: true
+  xlsx_enabled: true
+  save_html_snaps: false   # 保存页面快照（调试用）
+
+# 采集平台
+platforms:
+  amazon:
+    enabled: true
+    base_url: "https://www.amazon.com/s"
+  walmart:
+    enabled: true
+    base_url: "https://www.walmart.com/search"
