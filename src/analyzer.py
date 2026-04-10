@@ -20,12 +20,12 @@ log = logging.getLogger(__name__)
 
 # 估算成本参数（可配置）
 COSTS = {
-    "amazon_buyer_fee": 0.0,       # 亚马逊采购成本（商品本身价）
-    "international_shipping": 8.0,  # 国际运费（估算）
+    "amazon_buyer_fee": 0.0,        # 亚马逊采购成本（商品本身价）
+    "international_shipping": 3.5,  # 国际运费（估算每件，可批量降低）
     "walmart_referral_fee": 0.12,   # 沃尔玛推荐费 12%
-    "walmart_closing_fee": 0.30,    # 沃尔玛固定Closing费 $0.30
+    "walmart_closing_fee": 0.30,     # 沃尔玛固定Closing费 $0.30
     "fba_storage_per_cubic": 0.78,  # FBA 存储费（估算 $0.78/立方英尺/月）
-    "estimated_weight_lbs": 1.5,    # 估算重量
+    "estimated_weight_lbs": 1.0,     # 估算重量（轻小件优先）
 }
 
 
@@ -107,25 +107,35 @@ def analyze_products(amazon_data: list, walmart_data: list, config: dict = None)
         reviews = amazon_row.get("reviews_count", 0)
         rating = amazon_row.get("rating", 0)
 
-        # 过滤：评论数、评分
-        if reviews < min_reviews or reviews > max_reviews:
-            continue
-        if rating < min_rating or rating > max_rating:
-            continue
+        # 过滤：评论数、评分（0或缺失值放宽，只保留价格有效数据）
+        # 注意：真实爬取可能拿不到评分/评论，不强制过滤
         if amazon_price <= 0:
+            continue
+        if reviews > 0 and (reviews < min_reviews or reviews > max_reviews):
+            continue
+        if rating > 0 and (rating < min_rating or rating > max_rating):
             continue
 
         # 在 Walmart 同类商品中找匹配
+        # 策略：按"同品类同排名"匹配——第i个Amazon商品对应第i个Walmart商品
+        # 真实场景下可用ASIN/商品名称相似度匹配，这里用索引对齐
         walmart_match = None
         walmart_price = 0.0
 
         if not df_walmart.empty:
-            # 按关键词匹配
-            walmart_subset = df_walmart[df_walmart["keyword"] == keyword]
-            if not walmart_subset.empty:
-                # 取价格最低的 Walmart 商品作为参考
-                walmart_match = walmart_subset.loc[walmart_subset["price_walmart"].idxmax()]
-                walmart_price = walmart_match.get("price_walmart", 0)
+            walmart_subset = df_walmart[df_walmart["keyword"] == keyword].reset_index(drop=True)
+            amazon_index_list = df_amazon[df_amazon["keyword"] == keyword].reset_index(drop=True)
+            # 找到当前商品在 amazon_index_list 中的位置
+            try:
+                amazon_local_idx = amazon_index_list[
+                    amazon_index_list["asin"] == amazon_row.get("asin", "")
+                ].index[0]
+                # 用同样位置取 Walmart 对应商品
+                if amazon_local_idx < len(walmart_subset):
+                    walmart_match = walmart_subset.iloc[amazon_local_idx]
+                    walmart_price = walmart_match.get("price_walmart", 0)
+            except (KeyError, IndexError):
+                pass
 
         # 估算成本和利润
         cost_info = estimate_walmart_cost(amazon_price)
@@ -144,6 +154,8 @@ def analyze_products(amazon_data: list, walmart_data: list, config: dict = None)
         # 价格差
         price_gap = suggested_walmart_price - amazon_price
 
+        walmart_link = walmart_match.get("link_walmart", "") if walmart_match is not None else ""
+
         row = {
             "关键词": keyword,
             "ASIN": amazon_row.get("asin", ""),
@@ -153,7 +165,7 @@ def analyze_products(amazon_data: list, walmart_data: list, config: dict = None)
             "Amazon评论数": reviews,
             "Amazon链接": amazon_row.get("link_amazon", ""),
             "Walmart参考价": walmart_price if walmart_price > 0 else suggested_walmart_price,
-            "Walmart链接": walmart_match.get("link_walmart", "") if walmart_match is not None else "",
+            "Walmart链接": walmart_link,
             "采购成本": cost_info["cost_amazon_buy"],
             "推荐费(12%)": cost_info["cost_referral_fee"],
             "Closing费": cost_info["cost_closing_fee"],

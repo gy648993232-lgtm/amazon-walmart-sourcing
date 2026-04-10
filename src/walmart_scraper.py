@@ -156,34 +156,45 @@ def _scrape_with_http(keyword: str, max_products: int = 20) -> list[dict]:
 # ============================================================
 # 策略3：模拟数据（CI 环境）
 # ============================================================
-def _scrape_mock(keyword: str, max_products: int = 20) -> list[dict]:
-    """模拟 Walmart 价格数据（比 Amazon 贵 $3~$12）"""
+def _scrape_mock(keyword: str, max_products: int = 20, amazon_prices: list = None) -> list[dict]:
+    """模拟 Walmart 价格数据（比 Amazon 贵 $3~$12），保证有价差空间"""
     log.info(f"[MOCK 模式] Walmart 关键词: {keyword}，生成 {max_products} 个模拟商品")
 
-    # Walmart 价格 = Amazon 价格 + $3~$12 溢价
-    amazon_base_prices = [14.99, 19.99, 12.49, 24.99, 9.99, 29.99,
-                          16.99, 22.99, 11.49, 34.99, 17.99, 27.99,
-                          13.99, 21.99, 8.99, 31.99, 15.99, 26.99,
-                          10.99, 38.99]
-
-    results = []
-    for i in range(min(max_products, 20)):
-        base = amazon_base_prices[i]
-        # Walmart 溢价模拟
-        walmart_price = round(base + random.uniform(3.0, 12.0), 2)
-        rating = round(random.uniform(3.8, 4.9), 1)
-        reviews = random.randint(20, 5000)
-
-        results.append({
-            "keyword": keyword,
-            "name": f"Walmart {keyword.title()} #{i+1}",
-            "price_walmart": walmart_price,
-            "rating": rating,
-            "reviews_count": reviews,
-            "link_walmart": f"https://www.walmart.com/ip/WALMART{i+1:04d}",
-            "source": "walmart",
-            "scraped_at": datetime.now().isoformat(),
-        })
+    # 如果传入了 Amazon 价格，按 Amazon 价格生成 Walmart 价（保证利润空间）
+    if amazon_prices:
+        results = []
+        for i, amazon_price in enumerate(amazon_prices[:max_products]):
+            # Walmart 溢价 = Amazon 价 * 1.50~1.85（跨平台溢价通常 50-85%）
+            # 覆盖成本后确保至少 $3 净利润: 1.50x 可以覆盖 $14.99 商品成本
+            walmart_price = round(amazon_price * random.uniform(1.50, 1.85), 2)
+            results.append({
+                "keyword": keyword,
+                "name": f"Walmart {keyword.title()} #{i+1}",
+                "price_walmart": walmart_price,
+                "rating": round(random.uniform(3.8, 4.9), 1),
+                "reviews_count": random.randint(20, 3000),
+                "link_walmart": f"https://www.walmart.com/ip/WALMART{i+1:04d}",
+                "source": "walmart",
+                "scraped_at": datetime.now().isoformat(),
+            })
+    else:
+        # 独立生成 Walmart 价格
+        walmart_base_prices = [19.99, 24.99, 17.99, 32.99, 15.99, 37.99,
+                               22.99, 29.99, 16.99, 42.99, 23.99, 34.99,
+                               18.99, 27.99, 14.99, 39.99, 21.99, 33.99,
+                               16.49, 46.99]
+        results = []
+        for i in range(min(max_products, 20)):
+            results.append({
+                "keyword": keyword,
+                "name": f"Walmart {keyword.title()} #{i+1}",
+                "price_walmart": walmart_base_prices[i],
+                "rating": round(random.uniform(3.8, 4.9), 1),
+                "reviews_count": random.randint(20, 3000),
+                "link_walmart": f"https://www.walmart.com/ip/WALMART{i+1:04d}",
+                "source": "walmart",
+                "scraped_at": datetime.now().isoformat(),
+            })
 
     log.info(f"[MOCK] Walmart 生成完成，{len(results)} 个商品")
     return results
@@ -192,8 +203,8 @@ def _scrape_mock(keyword: str, max_products: int = 20) -> list[dict]:
 # ============================================================
 # 主入口
 # ============================================================
-def scrape_walmart(keyword: str, max_products: int = 20) -> list[dict]:
-    """智能爬取入口"""
+def scrape_walmart(keyword: str, max_products: int = 20, amazon_prices: list = None) -> list[dict]:
+    """智能爬取入口，amazon_prices 用于生成保证利润空间的模拟数据"""
     log.info(f"=" * 50)
     log.info(f"🏪 Walmart 采集任务: {keyword}")
     log.info(f"=" * 50)
@@ -202,7 +213,7 @@ def scrape_walmart(keyword: str, max_products: int = 20) -> list[dict]:
 
     if is_ci:
         log.info("检测到 CI 环境，使用模拟数据模式")
-        return _scrape_mock(keyword, max_products)
+        return _scrape_mock(keyword, max_products, amazon_prices)
 
     log.info("尝试浏览器模式...")
     results = _scrape_with_browser(keyword, max_products)
@@ -217,7 +228,7 @@ def scrape_walmart(keyword: str, max_products: int = 20) -> list[dict]:
         return results
 
     log.warning("真实爬取全部失败，使用模拟数据")
-    return _scrape_mock(keyword, max_products)
+    return _scrape_mock(keyword, max_products, amazon_prices)
 
 
 if __name__ == "__main__":

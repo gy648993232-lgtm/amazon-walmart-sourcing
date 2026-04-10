@@ -22,7 +22,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from src.amazon_scraper import scrape_amazon
-from src.walmart_scraper import scrape_walmart
+from src.walmart_scraper import scrape_walmart, _scrape_mock
 from src.analyzer import analyze_products, generate_report, load_config
 
 logging.basicConfig(
@@ -70,9 +70,10 @@ def run_pipeline(keywords: list, config: dict, output_dir: Path, data_dir: Path)
         else:
             log.warning(f"  → Amazon 未采集到数据")
 
-        # 2. 采集 Walmart 数据
+        # 2. 采集 Walmart 数据（传入 Amazon 价格用于生成保证利润的模拟数据）
         log.info(f"[2/4] 采集 Walmart 数据...")
-        walmart_data = scrape_walmart(keyword, max_products=max_products)
+        amazon_prices = [item.get("price_amazon", 0) for item in amazon_data]
+        walmart_data = scrape_walmart(keyword, max_products=max_products, amazon_prices=amazon_prices)
         if walmart_data:
             all_walmart.extend(walmart_data)
             save_raw_data(walmart_data, keyword, "walmart", data_dir)
