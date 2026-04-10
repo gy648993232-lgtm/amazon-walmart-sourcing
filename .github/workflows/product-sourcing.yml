@@ -1,15 +1,12 @@
 name: 🛒 Amazon → Walmart 选品自动化
 
 on:
-  # 定时调度（北京时间每天上午9点 = UTC 01:00）
   schedule:
     - cron: "0 1 * * *"
-
-  # 手动触发
   workflow_dispatch:
     inputs:
       keywords:
-        description: "关键词（逗号分隔，留空使用配置文件）"
+        description: "关键词（逗号分隔）"
         required: false
         default: ""
       max_products:
@@ -20,7 +17,6 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
-  WORKING_DIR: ${{ github.workspace }}
 
 jobs:
   sourcing:
@@ -31,7 +27,7 @@ jobs:
       - name: 📥 检出代码
         uses: actions/checkout@v4
 
-      - name: 🐍 设置 Python ${{ env.PYTHON_VERSION }}
+      - name: 🐍 设置 Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
@@ -41,45 +37,20 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: 🕷️ 采集 Amazon 数据
+      - name: 🕷️ 采集数据并分析
         run: |
-          echo "📡 正在采集 Amazon 数据..."
           mkdir -p data reports
           python run_pipeline.py \
-            --keywords "${{ inputs.keywords || github.event.inputs.keywords || env.DEFAULT_KEYWORDS || 'kitchen tools,home organization,office supplies' }}" \
+            --keywords "${{ inputs.keywords || 'kitchen tools,home organization,office supplies,fitness accessories' }}" \
             --output-dir reports \
             --data-dir data
-        env:
-          DEFAULT_KEYWORDS: kitchen tools, home organization, office supplies, fitness accessories
 
-      - name: 📊 上传报告为 Artifacts
+      - name: 📊 上传报告
         uses: actions/upload-artifact@v4
         if: success()
         with:
           name: sourcing-reports-${{ github.run_number }}
           path: |
-            reports/*.csv
-            reports/*.xlsx
-            data/*.json
+            reports/
+            data/
           retention-days: 30
-
-      - name: 📧 生成摘要评论
-        if: success()
-        run: |
-          echo "## 🛒 选品工作流执行报告" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| 项目 | 值 |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|-----|" >> $GITHUB_STEP_SUMMARY
-          echo "| 执行时间 | $(date '+%Y-%m-%d %H:%M:%S') |" >> $GITHUB_STEP_SUMMARY
-          echo "| 关键词 | ${{ inputs.keywords || '默认配置' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| 运行ID | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "📄 报告已保存为 Artifacts，请下载查看。" >> $GITHUB_STEP_SUMMARY
-
-      - name: ❌ 工作流失败通知
-        if: failure()
-        run: |
-          echo "## ⚠️ 选品工作流执行失败" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "请检查日志排查问题。" >> $GITHUB_STEP_SUMMARY
-          echo "[查看运行日志](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
