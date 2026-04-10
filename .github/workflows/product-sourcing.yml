@@ -2,7 +2,7 @@ name: 🛒 Amazon → Walmart 选品自动化
 
 on:
   schedule:
-    - cron: "0 1 * * *"
+    - cron: "0 1 * * *"   # 每天 UTC 01:00 = 北京时间 09:00
   workflow_dispatch:
     inputs:
       keywords:
@@ -17,6 +17,8 @@ on:
 
 env:
   PYTHON_VERSION: "3.11"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  CI: "true"
 
 jobs:
   sourcing:
@@ -45,12 +47,26 @@ jobs:
             --output-dir reports \
             --data-dir data
 
-      - name: 📊 上传报告
+      - name: 📊 上传报告 (CSV)
         uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: sourcing-reports-${{ github.run_number }}
-          path: |
-            reports/
-            data/
+          name: sourcing-csv-${{ github.run_number }}
+          path: reports/*.csv
+          retention-days: 30
+
+      - name: 📊 上传报告 (Excel)
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: sourcing-excel-${{ github.run_number }}
+          path: reports/*.xlsx
+          retention-days: 30
+
+      - name: 📊 上传原始数据
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: sourcing-data-${{ github.run_number }}
+          path: data/*.json
           retention-days: 30
