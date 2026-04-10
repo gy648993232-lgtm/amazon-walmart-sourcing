@@ -28,6 +28,48 @@ COSTS = {
     "estimated_weight_lbs": 1.0,     # 估算重量（轻小件优先）
 }
 
+# ============================================================
+# 品牌/版权过滤列表（常见侵权品牌）
+# ============================================================
+INFRINGEMENT_KEYWORDS = [
+    # 科技/手机/平板
+    "apple", "samsung", "google", "microsoft", "iphone", "ipad", "macbook",
+    "galaxy", "pixel", "surface", "iphone case", "ipad case",
+    # 运动/鞋服
+    "nike", "adidas", "puma", "under armour", "jordan", "nfl", "nba", "mlb",
+    "yankees", "lakers", "warriors", "cowboys",
+    # 玩具/影视/动漫
+    "disney", "marvel", "star wars", "harry potter", "pixar", "dc comics",
+    "batman", "spiderman", "superman", "iron man", "avengers", "frozen",
+    "mickey", "minnie", "buzz lightyear", "barbie", "lego", "nintendo",
+    "mario", "pokemon", "transformers", "hello kitty", "sanrio",
+    # 奢侈/美妆
+    "chanel", "dior", "gucci", "louis vuitton", "lv ", "hermes", "prada",
+    "coach", "michael kors", "revlon", "maybelline", "estee lauder",
+    # 家居/厨具品牌
+    "cuisinart", "kitchenaid", "instant pot", "ninja",
+    # 儿童用品
+    "fisher-price", "vtech", "hot wheels", "barbie doll",
+    # 音乐/影视版权
+    "dr dre", "beats", "sony", "bose", "jbl",
+    # 卡通/表情包
+    "emoji", "minions", "despicable me", "paw patrol",
+    # 常见版权词
+    "official", "licensed", "authentic", "genuine",
+]
+
+# ============================================================
+# Walmart 平台限制商品类别
+# ============================================================
+WALMART_RESTRICTED_CATEGORIES = [
+    "prescription", "pharmacy", " Rx", "rx ",       # 处方药
+    "refrigerat", "frozen food", "perishable",        # 需冷藏/生鲜
+    "oversized", "freight", "ltl",                    # 超大件
+    "weapon", "firearm", "ammunition", "explosive",  # 武器
+    "adult", "sex", "bong", "vapor", "e-cigarette",  # 成人/电子烟
+    "tobacco", "cigarette", "vape",                  # 烟草
+]
+
 
 def load_config(config_path: str = None) -> dict:
     """加载配置文件"""
@@ -35,6 +77,35 @@ def load_config(config_path: str = None) -> dict:
         config_path = Path(__file__).parent.parent / "config.yaml"
     with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def is_infringement(product_name: str) -> bool:
+    """
+    检测商品名是否涉及品牌侵权风险
+    包含知名商标/版权关键词即标记
+    """
+    name_lower = product_name.lower()
+    for brand in INFRINGEMENT_KEYWORDS:
+        if brand in name_lower:
+            return True
+    return False
+
+
+def is_walmart_compliant(product_name: str) -> bool:
+    """
+    检测商品名是否符合 Walmart 平台基本规范
+    限制类别：药品/生鲜/超大件/武器/成人用品等
+    """
+    name_lower = product_name.lower()
+    for restricted in WALMART_RESTRICTED_CATEGORIES:
+        if restricted in name_lower:
+            return False
+    return True
+
+
+def is_price_in_range(price: float, min_price: float, max_price: float) -> bool:
+    """检测价格是否在指定区间内"""
+    return min_price <= price <= max_price
 
 
 def estimate_walmart_cost(amazon_price: float) -> dict:
@@ -89,10 +160,15 @@ def analyze_products(amazon_data: list, walmart_data: list, config: dict = None)
     min_price_gap = f.get("min_price_gap", 3.0)
     min_margin = f.get("min_profit_margin", 0.20)
 
+    # 价格区间过滤（$10~$50 Walmart 合规选品范围）
+    walmart_min_price = 10.0
+    walmart_max_price = 50.0
+
     df_amazon = pd.DataFrame(amazon_data)
     df_walmart = pd.DataFrame(walmart_data)
 
     log.info(f"Amazon 数据: {len(df_amazon)} 条, Walmart 数据: {len(df_walmart)} 条")
+    log.info(f"价格过滤区间: ${walmart_min_price} ~ ${walmart_max_price}")
 
     if df_amazon.empty:
         log.warning("Amazon 数据为空，跳过分析")
@@ -100,20 +176,39 @@ def analyze_products(amazon_data: list, walmart_data: list, config: dict = None)
 
     # 合并分析
     results = []
+    skip_reasons = {"价格超出范围": 0, "品牌侵权": 0, "Walmart不合规": 0,
+                    "评论数不符": 0, "评分不符": 0}
 
     for _, amazon_row in df_amazon.iterrows():
         keyword = amazon_row.get("keyword", "")
         amazon_price = amazon_row.get("price_amazon", 0)
         reviews = amazon_row.get("reviews_count", 0)
         rating = amazon_row.get("rating", 0)
+        product_name = amazon_row.get("name", "")
 
-        # 过滤：评论数、评分（0或缺失值放宽，只保留价格有效数据）
-        # 注意：真实爬取可能拿不到评分/评论，不强制过滤
+        # ---- 过滤1：价格必须在 $10-$50 ----
+        if not is_price_in_range(amazon_price, walmart_min_price, walmart_max_price):
+            skip_reasons["价格超出范围"] += 1
+            continue
+
+        # ---- 过滤2：品牌侵权检测 ----
+        if is_infringement(product_name):
+            skip_reasons["品牌侵权"] += 1
+            continue
+
+        # ---- 过滤3：Walmart 平台合规检测 ----
+        if not is_walmart_compliant(product_name):
+            skip_reasons["Walmart不合规"] += 1
+            continue
+
+        # ---- 过滤4：评论数、评分（0或缺失值放宽）----
         if amazon_price <= 0:
             continue
         if reviews > 0 and (reviews < min_reviews or reviews > max_reviews):
+            skip_reasons["评论数不符"] += 1
             continue
         if rating > 0 and (rating < min_rating or rating > max_rating):
+            skip_reasons["评分不符"] += 1
             continue
 
         # 在 Walmart 同类商品中找匹配
@@ -155,12 +250,12 @@ def analyze_products(amazon_data: list, walmart_data: list, config: dict = None)
         price_gap = suggested_walmart_price - amazon_price
 
         walmart_link = walmart_match.get("link_walmart", "") if walmart_match is not None else ""
-
         row = {
             "关键词": keyword,
             "ASIN": amazon_row.get("asin", ""),
-            "Amazon商品名": amazon_row.get("name", ""),
+            "Amazon商品名": product_name,
             "Amazon售价": amazon_price,
+            "价格区间": f"${walmart_min_price}-${walmart_max_price}",
             "Amazon评分": rating,
             "Amazon评论数": reviews,
             "Amazon链接": amazon_row.get("link_amazon", ""),
@@ -174,6 +269,8 @@ def analyze_products(amazon_data: list, walmart_data: list, config: dict = None)
             "预计利润": round(profit, 2),
             "利润率": f"{profit_margin:.1%}",
             "Amazon-Walmart价差": round(price_gap, 2),
+            "侵权风险": "⚠️ 侵权" if is_infringement(product_name) else "✅ 无",
+            "平台合规": "✅ 合规" if is_walmart_compliant(product_name) else "❌ 受限",
             "是否推荐": "✅ 推荐" if profit > 3 and profit_margin >= min_margin else "❌ 利润不足",
             "采集时间": amazon_row.get("scraped_at", ""),
         }
@@ -194,6 +291,10 @@ def analyze_products(amazon_data: list, walmart_data: list, config: dict = None)
         )
 
         log.info(f"分析完成: {len(df_result)} 个候选商品")
+        # 打印过滤统计
+        active_skips = {k: v for k, v in skip_reasons.items() if v > 0}
+        if active_skips:
+            log.info(f"过滤统计: {active_skips}")
 
     return df_result
 
