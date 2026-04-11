@@ -12,15 +12,109 @@ keywords:
 # 采集数量（每关键词）
 max_products_per_keyword: 20
 
-# 选品过滤条件
+# ============================================
+# 选品过滤条件（可在 GitHub Secrets 中覆盖）
+# ============================================
 filter:
+  # ---- 价格区间（Amazon采购价）----
+  min_price: 8.0            # 最低采购价 $
+  max_price: 80.0          # 最高采购价 $
+
+  # ---- Amazon 商品质量 ----
   min_amazon_reviews: 50
   max_amazon_reviews: 3000
   min_amazon_rating: 3.5
   max_amazon_rating: 4.5
+
+  # ---- 利润要求 ----
   min_price_gap: 3.0        # 沃尔玛比亚马逊至少贵 $3
   min_profit_margin: 0.20  # 最低利润率 20%
+
+  # ---- 重量控制 ----
   max_weight_lbs: 3.0      # 最大重量（控制FBA成本）
+
+# ============================================
+# 品牌/版权过滤（侵权关键词）
+# 包含以下关键词的商品将被过滤掉
+# ============================================
+infringement_keywords:
+  # 科技/手机/平板
+  - "apple"
+  - "samsung"
+  - "google"
+  - "microsoft"
+  - "iphone"
+  - "ipad"
+  - "macbook"
+  - "galaxy"
+  - "pixel"
+  - "surface"
+  # 运动/鞋服
+  - "nike"
+  - "adidas"
+  - "puma"
+  - "under armour"
+  - "jordan"
+  - "nfl"
+  - "nba"
+  - "mlb"
+  # 玩具/影视/动漫
+  - "disney"
+  - "marvel"
+  - "star wars"
+  - "harry potter"
+  - "pixar"
+  - "dc comics"
+  - "batman"
+  - "spiderman"
+  - "superman"
+  - "avengers"
+  - "frozen"
+  - "mickey"
+  - "minnie"
+  - "barbie"
+  - "lego"
+  - "nintendo"
+  - "pokemon"
+  - "transformers"
+  # 奢侈/美妆
+  - "chanel"
+  - "dior"
+  - "gucci"
+  - "louis vuitton"
+  - "hermes"
+  - "prada"
+  - "coach"
+  - "michael kors"
+  # 家居品牌
+  - "cuisinart"
+  - "kitchenaid"
+  - "instant pot"
+  - "ninja"
+  # 音频
+  - "beats"
+  - "bose"
+  # 版权词
+  - "official"
+  - "licensed"
+
+# ============================================
+# Walmart 平台限制类别
+# 包含以下关键词的商品将被过滤掉
+# ============================================
+walmart_restricted:
+  - "prescription"
+  - "pharmacy"
+  - "refrigerat"
+  - "frozen food"
+  - "perishable"
+  - "oversized"
+  - "freight"
+  - "weapon"
+  - "firearm"
+  - "adult"
+  - "tobacco"
+  - "e-cigarette"
 
 # 输出设置
 output:

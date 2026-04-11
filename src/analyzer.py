@@ -29,46 +29,23 @@ COSTS = {
 }
 
 # ============================================================
-# 品牌/版权过滤列表（常见侵权品牌）
+# 全局缓存：过滤词表（从配置文件加载，只加载一次）
 # ============================================================
-INFRINGEMENT_KEYWORDS = [
-    # 科技/手机/平板
-    "apple", "samsung", "google", "microsoft", "iphone", "ipad", "macbook",
-    "galaxy", "pixel", "surface", "iphone case", "ipad case",
-    # 运动/鞋服
-    "nike", "adidas", "puma", "under armour", "jordan", "nfl", "nba", "mlb",
-    "yankees", "lakers", "warriors", "cowboys",
-    # 玩具/影视/动漫
-    "disney", "marvel", "star wars", "harry potter", "pixar", "dc comics",
-    "batman", "spiderman", "superman", "iron man", "avengers", "frozen",
-    "mickey", "minnie", "buzz lightyear", "barbie", "lego", "nintendo",
-    "mario", "pokemon", "transformers", "hello kitty", "sanrio",
-    # 奢侈/美妆
-    "chanel", "dior", "gucci", "louis vuitton", "lv ", "hermes", "prada",
-    "coach", "michael kors", "revlon", "maybelline", "estee lauder",
-    # 家居/厨具品牌
-    "cuisinart", "kitchenaid", "instant pot", "ninja",
-    # 儿童用品
-    "fisher-price", "vtech", "hot wheels", "barbie doll",
-    # 音乐/影视版权
-    "dr dre", "beats", "sony", "bose", "jbl",
-    # 卡通/表情包
-    "emoji", "minions", "despicable me", "paw patrol",
-    # 常见版权词
-    "official", "licensed", "authentic", "genuine",
-]
+_filter_cache: dict = {}
 
-# ============================================================
-# Walmart 平台限制商品类别
-# ============================================================
-WALMART_RESTRICTED_CATEGORIES = [
-    "prescription", "pharmacy", " Rx", "rx ",       # 处方药
-    "refrigerat", "frozen food", "perishable",        # 需冷藏/生鲜
-    "oversized", "freight", "ltl",                    # 超大件
-    "weapon", "firearm", "ammunition", "explosive",  # 武器
-    "adult", "sex", "bong", "vapor", "e-cigarette",  # 成人/电子烟
-    "tobacco", "cigarette", "vape",                  # 烟草
-]
+
+def _get_filter_lists() -> dict:
+    """懒加载：从配置文件读取过滤词表，缓存结果"""
+    global _filter_cache
+    if not _filter_cache:
+        config = load_config()
+        _filter_cache = {
+            "infringement": [k.lower() for k in config.get("infringement_keywords", [])],
+            "restricted": [k.lower() for k in config.get("walmart_restricted", [])],
+        }
+        log.info(f"加载侵权词 {len(_filter_cache['infringement'])} 个，"
+                 f"受限品类 {len(_filter_cache['restricted'])} 个")
+    return _filter_cache
 
 
 def load_config(config_path: str = None) -> dict:
@@ -81,11 +58,12 @@ def load_config(config_path: str = None) -> dict:
 
 def is_infringement(product_name: str) -> bool:
     """
-    检测商品名是否涉及品牌侵权风险
+    检测商品名是否涉及品牌侵权风险（从配置文件读取词表）
     包含知名商标/版权关键词即标记
     """
+    filters = _get_filter_lists()
     name_lower = product_name.lower()
-    for brand in INFRINGEMENT_KEYWORDS:
+    for brand in filters["infringement"]:
         if brand in name_lower:
             return True
     return False
@@ -93,11 +71,12 @@ def is_infringement(product_name: str) -> bool:
 
 def is_walmart_compliant(product_name: str) -> bool:
     """
-    检测商品名是否符合 Walmart 平台基本规范
+    检测商品名是否符合 Walmart 平台基本规范（从配置文件读取词表）
     限制类别：药品/生鲜/超大件/武器/成人用品等
     """
+    filters = _get_filter_lists()
     name_lower = product_name.lower()
-    for restricted in WALMART_RESTRICTED_CATEGORIES:
+    for restricted in filters["restricted"]:
         if restricted in name_lower:
             return False
     return True
@@ -160,9 +139,9 @@ def analyze_products(amazon_data: list, walmart_data: list, config: dict = None)
     min_price_gap = f.get("min_price_gap", 3.0)
     min_margin = f.get("min_profit_margin", 0.20)
 
-    # 价格区间过滤（$10~$50 Walmart 合规选品范围）
-    walmart_min_price = 10.0
-    walmart_max_price = 50.0
+    # 价格区间过滤（从配置文件读取）
+    walmart_min_price = f.get("min_price", 8.0)
+    walmart_max_price = f.get("max_price", 80.0)
 
     df_amazon = pd.DataFrame(amazon_data)
     df_walmart = pd.DataFrame(walmart_data)
